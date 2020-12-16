@@ -7,7 +7,7 @@ all : makecapk.apk
 
 # WARNING WARNING WARNING!  YOU ABSOLUTELY MUST OVERRIDE THE PROJECT NAME
 # you should also override these parameters, get your own signatre file and make your own manifest.
-APPNAME?=rawapi19_21
+APPNAME?=rawapi1921
 LABEL?=$(APPNAME)
 APKFILE ?= $(APPNAME).apk
 PACKAGENAME?=org.beerware.$(APPNAME)
@@ -25,7 +25,6 @@ ANDROIDTARGET?=$(ANDROID_MIN)
 CFLAGS?=-fpic -ffunction-sections -Os -fdata-sections -Wall -fvisibility=hidden
 LDFLAGS?=-Wl,--gc-sections -s
 ANDROID_FULLSCREEN?=y
-ADB?=adb
 UNAME := $(shell uname)
 
 
@@ -50,32 +49,40 @@ endif
 
 # Search list for where to try to find the SDK
 SDK_LOCATIONS += /data/cross/pydk/android-sdk
+SDK_LOCATIONS += $(ANDROID_HOME)
 
 #Just a little Makefile witchcraft to find the first SDK_LOCATION that exists
 #Then find an ndk folder and build tools folder in there.
-ANDROIDSDK?=$(firstword $(foreach dir, $(SDK_LOCATIONS), $(basename $(dir) ) ) )
-#NDK?=$(firstword $(ANDROID_NDK) $(ANDROID_NDK_HOME) $(wildcard $(ANDROIDSDK)/ndk/*) $(wildcard $(ANDROIDSDK)/ndk-bundle/*) )
-NDK?=/data/cross/pydk/android-sdk/ndk-bundle
-BUILD_TOOLS?=$(lastword $(wildcard $(ANDROIDSDK)/build-tools/*) )
+ANDROID_SDK_ROOT?=$(firstword $(foreach dir, $(SDK_LOCATIONS), $(basename $(dir) ) ) )
+
+#NDK?=$(firstword $(ANDROID_NDK) $(ANDROID_NDK_HOME) $(wildcard $(ANDROID_SDK_ROOT)/ndk/*) $(wildcard $(ANDROID_SDK_ROOT)/ndk-bundle/*) )
+NDK?=/data/cross/pydk/android-sdk/ndk-bundle.22
+BUILD_TOOLS?=$(lastword $(wildcard $(ANDROID_SDK_ROOT)/build-tools/*) )
+ADB?=$(ANDROID_SDK_ROOT)/platform-tools/adb
+
 
 # fall back to default Android SDL installation location if valid NDK was not found
 ifeq ($(NDK),)
-ANDROIDSDK := ~/Android/Sdk
+	ANDROID_SDK_ROOT := ~/Android/Sdk
 endif
 
 # Verify if directories are detected
-ifeq ($(ANDROIDSDK),)
-$(error ANDROIDSDK directory not found)
-endif
-ifeq ($(NDK),)
-$(error NDK directory not found)
-endif
-ifeq ($(BUILD_TOOLS),)
-$(error BUILD_TOOLS directory not found)
+ifeq ($(ANDROID_SDK_ROOT),)
+	$(error ANDROID_SDK_ROOT directory not found)
 endif
 
+
+ifeq ($(NDK),)
+	$(error NDK directory not found)
+endif
+
+ifeq ($(BUILD_TOOLS),)
+	$(error BUILD_TOOLS directory not found)
+endif
+
+
 testsdk :
-	@echo "SDK:\t\t" $(ANDROIDSDK)
+	@echo "SDK:\t\t" $(ANDROID_SDK_ROOT)
 	@echo "NDK:\t\t" $(NDK)
 	@echo "Build Tools:\t" $(BUILD_TOOLS)
 
@@ -109,7 +116,7 @@ CFLAGS_x86:=-march=i686 -mtune=intel -mssse3 -mfpmath=sse -m32
 CFLAGS_x86_64:=-march=x86-64 -msse4.2 -mpopcnt -m64 -mtune=intel
 STOREPASS?=android
 DNAME:="CN=example.com, OU=ID, O=Example, L=Doe, S=John, C=GB"
-KEYSTOREFILE:=my-debug-key.keystore
+KEYSTOREFILE:=debug.keystore
 ALIASNAME?=androiddebugkey
 
 keystore : $(KEYSTOREFILE)
@@ -150,26 +157,36 @@ makecapk/lib/x86_64/lib$(APPNAME).so : $(ANDROIDSRCS)
 
 
 
-makecapk.apk : $(TARGETS) $(EXTRA_ASSETS_TRIGGER) AndroidManifest.xml
+makecapk.apk : stop clean manifest $(TARGETS) $(EXTRA_ASSETS_TRIGGER) AndroidManifest.xml
 	mkdir -p makecapk/assets
 	cp -r Sources/assets/* makecapk/assets
-	rm -rf temp.apk
+	rm -rf temp.apk $(APKFILE)
 
-	$(AAPT) package -f -F temp.apk\
- -I $(ANDROIDSDK)/platforms/android-28/android.jar\
- -M AndroidManifest.xml -S Sources/res\
+	$(AAPT) package -f -F temp.apk \
+ -I $(ANDROID_SDK_ROOT)/platforms/android-28/android.jar \
+ -M AndroidManifest.xml -S Sources/res \
  -A makecapk/assets -v --target-sdk-version $(ANDROIDTARGET)
 
 	unzip -o temp.apk -d makecapk
 	rm -rf makecapk.apk
+
+	# zip lib+assets
 	cd makecapk && zip -D9r ../makecapk.apk . && zip -D0r ../makecapk.apk ./resources.arsc ./AndroidManifest.xml
-	$(JARSIGNER) -sigalg SHA1withRSA -digestalg SHA1 -verbose -keystore $(KEYSTOREFILE) -storepass $(STOREPASS) makecapk.apk $(ALIASNAME)
-	rm -rf $(APKFILE)
-	$(BUILD_TOOLS)/zipalign -v 4 makecapk.apk $(APKFILE)
-	#Using the apksigner in this way is only required on Android 30+
+
+	# sign the zip
+	#cp -vf makecapk.apk debug.apk
+	#$(JARSIGNER) -sigalg SHA1withRSA -digestalg SHA1 -verbose -keystore $(KEYSTOREFILE) -storepass $(STOREPASS) debug.apk $(ALIASNAME)
+	#
+	python3 -m pyjarsigner makecapk.apk debug.cert.pem debug.key.pem
+
+	$(BUILD_TOOLS)/zipalign -v 4 debug.apk $(APKFILE)
+
+	# sign the apk
+	# Using the apksigner in this way is only required on Android 30+
 	$(BUILD_TOOLS)/apksigner sign --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS) --ks $(KEYSTOREFILE) $(APKFILE)
-	rm -rf temp.apk
-	rm -rf makecapk.apk
+
+	# tidy
+	rm -rf temp.apk makecapk.apk debug.apk
 	@ls -l $(APKFILE)
 
 manifest: AndroidManifest.xml
@@ -177,24 +194,31 @@ manifest: AndroidManifest.xml
 AndroidManifest.xml :
 	rm -rf AndroidManifest.xml
 	PACKAGENAME=$(PACKAGENAME) \
-		ANDROID_MIN=$(ANDROID_MIN) \
-		ANDROIDTARGET=$(ANDROIDTARGET) \
+		ANDROIDVERSION=$(ANDROID_MIN) \
+		ANDROIDTARGET=$(ANDROID_NEXT) \
 		APPNAME=$(APPNAME) \
-		LABEL=$(LABEL) envsubst '$$ANDROIDTARGET $$ANDROID_MIN $$APPNAME $$PACKAGENAME $$LABEL' \
+		LABEL=$(LABEL) envsubst '$$ANDROIDTARGET $$ANDROIDVERSION $$APPNAME $$PACKAGENAME $$LABEL' \
 		< AndroidManifest.xml.template > AndroidManifest.xml
 
+deps:
+	pip3 install git+https://github.com/pmp-p/M2Crypto
+	#pip3 install git+https://github.com/pycrypto/pycrypto
+	pip3 install git+https://github.com/pmp-p/pyjarsigner
 
-uninstall :
+uninstall:
 	($(ADB) uninstall $(PACKAGENAME))||true
 
-push : makecapk.apk
+push: makecapk.apk
 	@echo "Installing" $(PACKAGENAME)
 	$(ADB) install -r $(APKFILE)
 
-run : push
+run: push
 	$(eval ACTIVITYNAME:=$(shell $(AAPT) dump badging $(APKFILE) | grep "launchable-activity" | cut -f 2 -d"'"))
 	$(ADB) shell am start -n $(PACKAGENAME)/$(ACTIVITYNAME)
 
-clean :
-	rm -rf temp.apk makecapk.apk makecapk $(APKFILE)
+stop:
+	$(ADB) shell am force-stop $(PACKAGENAME)
+
+clean:
+	rm -rf temp.apk makecapk.apk makecapk debug.apk AndroidManifest.xml $(APKFILE)
 
