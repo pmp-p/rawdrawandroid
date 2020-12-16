@@ -7,18 +7,19 @@ all : makecapk.apk
 
 # WARNING WARNING WARNING!  YOU ABSOLUTELY MUST OVERRIDE THE PROJECT NAME
 # you should also override these parameters, get your own signatre file and make your own manifest.
-APPNAME?=cnfgtest
+APPNAME?=rawa19
 LABEL?=$(APPNAME)
 APKFILE ?= $(APPNAME).apk
-PACKAGENAME?=org.yourorg.$(APPNAME)
+PACKAGENAME?=org.beerware.$(APPNAME)
 RAWDRAWANDROID?=.
 RAWDRAWANDROIDSRCS=$(RAWDRAWANDROID)/android_native_app_glue.c
 SRC?=test.c
 
 #We've tested it with android version 22, 24, 28, 29 and 30.
 #You can target something like Android 28, but if you set ANDROIDVERSION to say 22, then
-#Your app should (though not necessarily) support all the way back to Android 22. 
-ANDROIDVERSION?=30
+#Your app should (though not necessarily) support all the way back to Android 22.
+ANDROIDVERSION?=19
+ANDROIDVERSION64?=21
 ANDROIDTARGET?=$(ANDROIDVERSION)
 #Default is to be strip down, but your app can override it.
 CFLAGS?=-ffunction-sections -Os -fdata-sections -Wall -fvisibility=hidden
@@ -33,7 +34,7 @@ UNAME := $(shell uname)
 
 ANDROIDSRCS:= $(SRC) $(RAWDRAWANDROIDSRCS)
 
-#if you have a custom Android Home location you can add it to this list.  
+#if you have a custom Android Home location you can add it to this list.
 #This makefile will select the first present folder.
 
 
@@ -48,12 +49,13 @@ OS_NAME = windows-x86_64
 endif
 
 # Search list for where to try to find the SDK
-SDK_LOCATIONS += $(ANDROID_HOME) $(ANDROID_SDK_ROOT) ~/Android/Sdk $(HOME)/Library/Android/sdk
+SDK_LOCATIONS += /data/cross/pydk/android-sdk
 
 #Just a little Makefile witchcraft to find the first SDK_LOCATION that exists
 #Then find an ndk folder and build tools folder in there.
 ANDROIDSDK?=$(firstword $(foreach dir, $(SDK_LOCATIONS), $(basename $(dir) ) ) )
-NDK?=$(firstword $(ANDROID_NDK) $(ANDROID_NDK_HOME) $(wildcard $(ANDROIDSDK)/ndk/*) $(wildcard $(ANDROIDSDK)/ndk-bundle/*) )
+#NDK?=$(firstword $(ANDROID_NDK) $(ANDROID_NDK_HOME) $(wildcard $(ANDROIDSDK)/ndk/*) $(wildcard $(ANDROIDSDK)/ndk-bundle/*) )
+NDK?=/data/cross/pydk/android-sdk/ndk-bundle
 BUILD_TOOLS?=$(lastword $(wildcard $(ANDROIDSDK)/build-tools/*) )
 
 # fall back to default Android SDL installation location if valid NDK was not found
@@ -81,13 +83,15 @@ CFLAGS+=-Os -DANDROID -DAPPNAME=\"$(APPNAME)\"
 ifeq (ANDROID_FULLSCREEN,y)
 CFLAGS +=-DANDROID_FULLSCREEN
 endif
-CFLAGS+= -I$(RAWDRAWANDROID)/rawdraw -I$(NDK)/sysroot/usr/include -I$(NDK)/sysroot/usr/include/android -fPIC -I$(RAWDRAWANDROID) -DANDROIDVERSION=$(ANDROIDVERSION)
+CFLAGS+= -I$(RAWDRAWANDROID)/rawdraw -I$(NDK)/sysroot/usr/include -I$(NDK)/sysroot/usr/include/android \
+ -I$(NDK)/toolchains/llvm/prebuilt/linux-x86_64//sysroot/usr/include/android \
+ -fPIC -I$(RAWDRAWANDROID) -DANDROIDVERSION=$(ANDROIDVERSION)
 LDFLAGS += -lm -lGLESv3 -lEGL -landroid -llog
 LDFLAGS += -shared -uANativeActivity_onCreate
 
-CC_ARM64:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/aarch64-linux-android$(ANDROIDVERSION)-clang
+CC_ARM64:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/aarch64-linux-android$(ANDROIDVERSION64)-clang
 CC_ARM32:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/armv7a-linux-androideabi$(ANDROIDVERSION)-clang
-CC_x86:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/x86_64-linux-android$(ANDROIDVERSION)-clang
+CC_x86:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/i686-linux-android$(ANDROIDVERSION)-clang
 CC_x86_64=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/x86_64-linux-android$(ANDROIDVERSION)-clang
 AAPT:=$(BUILD_TOOLS)/aapt
 
@@ -101,10 +105,10 @@ CFLAGS_ARM64:=-m64
 CFLAGS_ARM32:=-mfloat-abi=softfp -m32
 CFLAGS_x86:=-march=i686 -mtune=intel -mssse3 -mfpmath=sse -m32
 CFLAGS_x86_64:=-march=x86-64 -msse4.2 -mpopcnt -m64 -mtune=intel
-STOREPASS?=password
+STOREPASS?=android
 DNAME:="CN=example.com, OU=ID, O=Example, L=Doe, S=John, C=GB"
-KEYSTOREFILE:=my-release-key.keystore
-ALIASNAME?=standkey
+KEYSTOREFILE:=my-debug-key.keystore
+ALIASNAME?=androiddebugkey
 
 keystore : $(KEYSTOREFILE)
 
@@ -148,15 +152,15 @@ makecapk.apk : $(TARGETS) $(EXTRA_ASSETS_TRIGGER) AndroidManifest.xml
 	mkdir -p makecapk/assets
 	cp -r Sources/assets/* makecapk/assets
 	rm -rf temp.apk
-	$(AAPT) package -f -F temp.apk -I $(ANDROIDSDK)/platforms/android-$(ANDROIDVERSION)/android.jar -M AndroidManifest.xml -S Sources/res -A makecapk/assets -v --target-sdk-version $(ANDROIDTARGET)
+	$(AAPT) package -f -F temp.apk -I $(ANDROIDSDK)/platforms/android-28/android.jar -M AndroidManifest.xml -S Sources/res -A makecapk/assets -v --target-sdk-version $(ANDROIDTARGET)
 	unzip -o temp.apk -d makecapk
 	rm -rf makecapk.apk
 	cd makecapk && zip -D9r ../makecapk.apk . && zip -D0r ../makecapk.apk ./resources.arsc ./AndroidManifest.xml
 	jarsigner -sigalg SHA1withRSA -digestalg SHA1 -verbose -keystore $(KEYSTOREFILE) -storepass $(STOREPASS) makecapk.apk $(ALIASNAME)
 	rm -rf $(APKFILE)
 	$(BUILD_TOOLS)/zipalign -v 4 makecapk.apk $(APKFILE)
-	#Using the apksigner in this way is only required on Android 30+
-	$(BUILD_TOOLS)/apksigner sign --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS) --ks $(KEYSTOREFILE) $(APKFILE)
+	#Using the apksigner in this way is only required on Android 30+  --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS)
+	$(BUILD_TOOLS)/apksigner sign  --ks $(KEYSTOREFILE) $(APKFILE)
 	rm -rf temp.apk
 	rm -rf makecapk.apk
 	@ls -l $(APKFILE)
@@ -173,7 +177,7 @@ AndroidManifest.xml :
 		< AndroidManifest.xml.template > AndroidManifest.xml
 
 
-uninstall : 
+uninstall :
 	($(ADB) uninstall $(PACKAGENAME))||true
 
 push : makecapk.apk
