@@ -7,7 +7,7 @@ all : makecapk.apk
 
 # WARNING WARNING WARNING!  YOU ABSOLUTELY MUST OVERRIDE THE PROJECT NAME
 # you should also override these parameters, get your own signatre file and make your own manifest.
-APPNAME?=rawa19
+APPNAME?=rawapi19_21
 LABEL?=$(APPNAME)
 APKFILE ?= $(APPNAME).apk
 PACKAGENAME?=org.beerware.$(APPNAME)
@@ -16,13 +16,13 @@ RAWDRAWANDROIDSRCS=$(RAWDRAWANDROID)/android_native_app_glue.c
 SRC?=test.c
 
 #We've tested it with android version 22, 24, 28, 29 and 30.
-#You can target something like Android 28, but if you set ANDROIDVERSION to say 22, then
+#You can target something like Android 28, but if you set ANDROID_MIN to say 22, then
 #Your app should (though not necessarily) support all the way back to Android 22.
-ANDROIDVERSION?=19
-ANDROIDVERSION64?=21
-ANDROIDTARGET?=$(ANDROIDVERSION)
+ANDROID_MIN?=19
+ANDROID_NEXT?=21
+ANDROIDTARGET?=$(ANDROID_MIN)
 #Default is to be strip down, but your app can override it.
-CFLAGS?=-ffunction-sections -Os -fdata-sections -Wall -fvisibility=hidden
+CFLAGS?=-fpic -ffunction-sections -Os -fdata-sections -Wall -fvisibility=hidden
 LDFLAGS?=-Wl,--gc-sections -s
 ANDROID_FULLSCREEN?=y
 ADB?=adb
@@ -80,26 +80,28 @@ testsdk :
 	@echo "Build Tools:\t" $(BUILD_TOOLS)
 
 CFLAGS+=-Os -DANDROID -DAPPNAME=\"$(APPNAME)\"
+
 ifeq (ANDROID_FULLSCREEN,y)
-CFLAGS +=-DANDROID_FULLSCREEN
+	CFLAGS +=-DANDROID_FULLSCREEN
 endif
+
 CFLAGS+= -I$(RAWDRAWANDROID)/rawdraw -I$(NDK)/sysroot/usr/include -I$(NDK)/sysroot/usr/include/android \
  -I$(NDK)/toolchains/llvm/prebuilt/linux-x86_64//sysroot/usr/include/android \
- -fPIC -I$(RAWDRAWANDROID) -DANDROIDVERSION=$(ANDROIDVERSION)
+ -fPIC -I$(RAWDRAWANDROID) -DANDROID_MIN=$(ANDROID_MIN)
 LDFLAGS += -lm -lGLESv3 -lEGL -landroid -llog
 LDFLAGS += -shared -uANativeActivity_onCreate
 
-CC_ARM64:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/aarch64-linux-android$(ANDROIDVERSION64)-clang
-CC_ARM32:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/armv7a-linux-androideabi$(ANDROIDVERSION)-clang
-CC_x86:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/i686-linux-android$(ANDROIDVERSION)-clang
-CC_x86_64=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/x86_64-linux-android$(ANDROIDVERSION)-clang
+CC_ARM64:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/aarch64-linux-android$(ANDROID_NEXT)-clang
+CC_ARM32:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/armv7a-linux-androideabi$(ANDROID_MIN)-clang
+CC_x86:=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/i686-linux-android$(ANDROID_NEXT)-clang
+CC_x86_64=$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/bin/x86_64-linux-android$(ANDROID_NEXT)-clang
 AAPT:=$(BUILD_TOOLS)/aapt
 
 # Which binaries to build? Just comment/uncomment these lines:
 TARGETS += makecapk/lib/arm64-v8a/lib$(APPNAME).so
 TARGETS += makecapk/lib/armeabi-v7a/lib$(APPNAME).so
-#TARGETS += makecapk/lib/x86/lib$(APPNAME).so
-#TARGETS += makecapk/lib/x86_64/lib$(APPNAME).so
+TARGETS += makecapk/lib/x86/lib$(APPNAME).so
+TARGETS += makecapk/lib/x86_64/lib$(APPNAME).so
 
 CFLAGS_ARM64:=-m64
 CFLAGS_ARM32:=-mfloat-abi=softfp -m32
@@ -123,19 +125,19 @@ folders:
 
 makecapk/lib/arm64-v8a/lib$(APPNAME).so : $(ANDROIDSRCS)
 	mkdir -p makecapk/lib/arm64-v8a
-	$(CC_ARM64) $(CFLAGS) $(CFLAGS_ARM64) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/aarch64-linux-android/$(ANDROIDVERSION) $(LDFLAGS)
+	$(CC_ARM64) $(CFLAGS) $(CFLAGS_ARM64) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/aarch64-linux-android/$(ANDROID_NEXT) $(LDFLAGS)
 
 makecapk/lib/armeabi-v7a/lib$(APPNAME).so : $(ANDROIDSRCS)
 	mkdir -p makecapk/lib/armeabi-v7a
-	$(CC_ARM32) $(CFLAGS) $(CFLAGS_ARM32) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/arm-linux-androideabi/$(ANDROIDVERSION) $(LDFLAGS)
+	$(CC_ARM32) $(CFLAGS) $(CFLAGS_ARM32) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/arm-linux-androideabi/$(ANDROID_MIN) $(LDFLAGS)
 
 makecapk/lib/x86/lib$(APPNAME).so : $(ANDROIDSRCS)
 	mkdir -p makecapk/lib/x86
-	$(CC_x86) $(CFLAGS) $(CFLAGS_x86) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/i686-linux-android/$(ANDROIDVERSION) $(LDFLAGS)
+	$(CC_x86) $(CFLAGS) $(CFLAGS_x86) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/i686-linux-android/$(ANDROID_NEXT) $(LDFLAGS)
 
 makecapk/lib/x86_64/lib$(APPNAME).so : $(ANDROIDSRCS)
 	mkdir -p makecapk/lib/x86_64
-	$(CC_x86) $(CFLAGS) $(CFLAGS_x86_64) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/x86_64-linux-android/$(ANDROIDVERSION) $(LDFLAGS)
+	$(CC_x86) $(CFLAGS) $(CFLAGS_x86_64) -o $@ $^ -L$(NDK)/toolchains/llvm/prebuilt/$(OS_NAME)/sysroot/usr/lib/x86_64-linux-android/$(ANDROID_NEXT) $(LDFLAGS)
 
 #We're really cutting corners.  You should probably use resource files.. Replace android:label="@string/app_name" and add a resource file.
 #Then do this -S Sources/res on the aapt line.
@@ -152,15 +154,20 @@ makecapk.apk : $(TARGETS) $(EXTRA_ASSETS_TRIGGER) AndroidManifest.xml
 	mkdir -p makecapk/assets
 	cp -r Sources/assets/* makecapk/assets
 	rm -rf temp.apk
-	$(AAPT) package -f -F temp.apk -I $(ANDROIDSDK)/platforms/android-28/android.jar -M AndroidManifest.xml -S Sources/res -A makecapk/assets -v --target-sdk-version $(ANDROIDTARGET)
+
+	$(AAPT) package -f -F temp.apk\
+ -I $(ANDROIDSDK)/platforms/android-28/android.jar\
+ -M AndroidManifest.xml -S Sources/res\
+ -A makecapk/assets -v --target-sdk-version $(ANDROIDTARGET)
+
 	unzip -o temp.apk -d makecapk
 	rm -rf makecapk.apk
 	cd makecapk && zip -D9r ../makecapk.apk . && zip -D0r ../makecapk.apk ./resources.arsc ./AndroidManifest.xml
-	jarsigner -sigalg SHA1withRSA -digestalg SHA1 -verbose -keystore $(KEYSTOREFILE) -storepass $(STOREPASS) makecapk.apk $(ALIASNAME)
+	$(JARSIGNER) -sigalg SHA1withRSA -digestalg SHA1 -verbose -keystore $(KEYSTOREFILE) -storepass $(STOREPASS) makecapk.apk $(ALIASNAME)
 	rm -rf $(APKFILE)
 	$(BUILD_TOOLS)/zipalign -v 4 makecapk.apk $(APKFILE)
-	#Using the apksigner in this way is only required on Android 30+  --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS)
-	$(BUILD_TOOLS)/apksigner sign  --ks $(KEYSTOREFILE) $(APKFILE)
+	#Using the apksigner in this way is only required on Android 30+
+	$(BUILD_TOOLS)/apksigner sign --key-pass pass:$(STOREPASS) --ks-pass pass:$(STOREPASS) --ks $(KEYSTOREFILE) $(APKFILE)
 	rm -rf temp.apk
 	rm -rf makecapk.apk
 	@ls -l $(APKFILE)
@@ -170,10 +177,10 @@ manifest: AndroidManifest.xml
 AndroidManifest.xml :
 	rm -rf AndroidManifest.xml
 	PACKAGENAME=$(PACKAGENAME) \
-		ANDROIDVERSION=$(ANDROIDVERSION) \
+		ANDROID_MIN=$(ANDROID_MIN) \
 		ANDROIDTARGET=$(ANDROIDTARGET) \
 		APPNAME=$(APPNAME) \
-		LABEL=$(LABEL) envsubst '$$ANDROIDTARGET $$ANDROIDVERSION $$APPNAME $$PACKAGENAME $$LABEL' \
+		LABEL=$(LABEL) envsubst '$$ANDROIDTARGET $$ANDROID_MIN $$APPNAME $$PACKAGENAME $$LABEL' \
 		< AndroidManifest.xml.template > AndroidManifest.xml
 
 
